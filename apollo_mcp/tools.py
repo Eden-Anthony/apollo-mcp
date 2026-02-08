@@ -244,6 +244,57 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
             },
         },
         {
+            "name": "search_contacts",
+            "description": (
+                "Search your CRM contacts (people you've already added to Apollo). FREE. "
+                "Unlike search_people which searches Apollo's global database, this only "
+                "searches your team's contacts. Returns contact IDs usable with "
+                "update_contacts and update_contact_stages."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "q_keywords": {
+                        "type": "string",
+                        "description": "Keyword search across name, title, company, email, etc.",
+                    },
+                    "contact_stage_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by contact stage IDs",
+                    },
+                    "owner_id": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Filter by contact owner IDs",
+                    },
+                    "sort_by_field": {
+                        "type": "string",
+                        "description": 'Sort field, e.g. "contact_updated_at"',
+                    },
+                    "sort_ascending": {
+                        "type": "boolean",
+                        "description": "Sort ascending (default false = newest first)",
+                        "default": False,
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Page number (default 1, max 500)",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Results per page (default 25, max 100)",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+            },
+        },
+        {
             "name": "create_contacts",
             "description": (
                 "Add 1-100 people to your Apollo CRM as contacts. "
@@ -348,6 +399,8 @@ class ApolloTools:
             return self._enrich_people(arguments)
         elif name == "enrich_organizations":
             return self._enrich_organizations(arguments)
+        elif name == "search_contacts":
+            return self._search_contacts(arguments)
         elif name == "create_contacts":
             return self._create_contacts(arguments)
         elif name == "update_contacts":
@@ -415,6 +468,20 @@ class ApolloTools:
         }
 
     # ---- contacts ----
+
+    def _search_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        params = _clamp_pagination(_clean_params(args))
+        raw = self.client.search_contacts(params)
+
+        contacts = [_format_contact(c) for c in raw.get("contacts") or []]
+        pagination = raw.get("pagination", {})
+
+        return {
+            "total_results": pagination.get("total_entries", len(contacts)),
+            "page": pagination.get("page", params.get("page", 1)),
+            "per_page": pagination.get("per_page", params.get("per_page", 25)),
+            "contacts": contacts,
+        }
 
     def _create_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
         contacts = args.get("contacts", [])

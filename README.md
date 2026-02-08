@@ -95,6 +95,18 @@ Get full company details (industry, size, funding, technologies) for 1-10 orgs. 
 
 Contacts are your CRM records. These tools use **contact IDs**, not people/org IDs from search.
 
+#### `search_contacts` — FREE
+
+Search your team's CRM contacts. Unlike `search_people`, this only returns contacts you've already added to Apollo.
+
+Parameters (all optional):
+- `q_keywords` — keyword search across name, title, company, email
+- `contact_stage_ids` — filter by stage IDs
+- `owner_id` — filter by contact owner IDs
+- `sort_by_field` — e.g. `"contact_updated_at"`
+- `sort_ascending` — default false (newest first)
+- `page` (default 1) / `per_page` (default 25, max 100)
+
 #### `create_contacts`
 
 Add 1-100 people to your CRM. Duplicates are returned separately in `existing_contacts`.

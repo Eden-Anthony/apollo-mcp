@@ -2,8 +2,6 @@
 
 import os
 import json
-import io
-import sys
 import pytest
 from unittest.mock import patch, MagicMock
 
@@ -15,7 +13,6 @@ from apollo_mcp.server import MCPServer
 def send_and_capture(server, message):
     """Send a JSON-RPC message and capture the response."""
     captured = []
-    original_print = __builtins__["print"] if isinstance(__builtins__, dict) else print
 
     def mock_print(*args, **kwargs):
         captured.append(args[0])
@@ -30,7 +27,6 @@ def send_and_capture(server, message):
 @pytest.fixture
 def server():
     s = MCPServer()
-    # Initialize it
     resp = send_and_capture(s, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
     assert "result" in resp
     assert s.initialized
@@ -38,14 +34,13 @@ def server():
 
 
 def test_initialize_returns_capabilities(server):
-    # server fixture already initialized, verify it worked
     assert server.tools is not None
 
 
 def test_tools_list_returns_all_tools(server):
     resp = send_and_capture(server, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = [t["name"] for t in resp["result"]["tools"]]
-    assert len(names) == 7
+    assert len(names) == 8
     assert "search_people" in names
     assert "create_contacts" in names
 

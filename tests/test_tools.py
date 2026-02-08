@@ -1,14 +1,12 @@
 """High-level tests for Apollo MCP tools — schemas, validation, dispatch, formatting."""
 
 import os
-import json
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
-# Set dummy key before importing anything that reads it
 os.environ["APOLLO_API_KEY"] = "test-key"
 
-from apollo_mcp.api import ApolloClient, ApolloAPIError
+from apollo_mcp.api import ApolloClient
 from apollo_mcp.tools import ApolloTools, get_tool_schemas
 
 
@@ -36,6 +34,7 @@ def test_all_tools_registered():
         "search_organizations",
         "enrich_people",
         "enrich_organizations",
+        "search_contacts",
         "create_contacts",
         "update_contacts",
         "update_contact_stages",
@@ -149,6 +148,24 @@ def test_enrich_organizations_rejects_no_identifier():
     t = ApolloTools(ApolloClient())
     with pytest.raises(ValueError, match="no identifying fields"):
         t.execute_tool("enrich_organizations", {"details": [{}]})
+
+
+# ---- search_contacts ----
+
+def test_search_contacts_returns_crm_contacts(tools, client):
+    client._post.return_value = {
+        "contacts": [
+            {"id": "c1", "first_name": "Jane", "last_name": "Doe", "email": "jane@acme.com",
+             "title": "CEO", "contact_stage_id": "stage-1"},
+        ],
+        "pagination": {"total_entries": 1, "page": 1, "per_page": 25},
+    }
+
+    result = tools.execute_tool("search_contacts", {"q_keywords": "Jane"})
+
+    assert result["total_results"] == 1
+    assert result["contacts"][0]["id"] == "c1"
+    assert result["contacts"][0]["email"] == "jane@acme.com"
 
 
 # ---- create_contacts ----

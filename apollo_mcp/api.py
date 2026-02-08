@@ -95,6 +95,10 @@ class ApolloClient:
         """Bulk enrich organizations via organizations/bulk_enrich. DOES consume credits."""
         return self._post("/api/v1/organizations/bulk_enrich", {"details": details})
 
+    def search_contacts(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Search contacts in your CRM via contacts/search."""
+        return self._post("/api/v1/contacts/search", params)
+
     def create_contacts(self, contacts: list) -> Dict[str, Any]:
         """Bulk create contacts via contacts/bulk_create. Does NOT update existing."""
         return self._post("/api/v1/contacts/bulk_create", {"contacts": contacts})
