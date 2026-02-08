@@ -73,6 +73,46 @@ class ApolloClient:
         except TimeoutError:
             raise ApolloAPIError("Request timed out after 30s")
 
+    def _get(self, path: str) -> Dict[str, Any]:
+        """GET from Apollo API and return parsed response."""
+        url = f"{self.BASE_URL}{path}"
+
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": self.api_key,
+                "User-Agent": "apollo-mcp/0.1.0",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.TIMEOUT) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8")
+            except Exception:
+                pass
+
+            if e.code == 401:
+                raise ApolloAPIError("Invalid API key", status_code=401, body=body)
+            elif e.code == 429:
+                raise ApolloAPIError("Rate limited — try again later", status_code=429, body=body)
+            else:
+                raise ApolloAPIError(
+                    f"HTTP {e.code}: {body}", status_code=e.code, body=body
+                )
+        except urllib.error.URLError as e:
+            raise ApolloAPIError(f"Network error: {e.reason}")
+        except TimeoutError:
+            raise ApolloAPIError("Request timed out after 30s")
+
+    def list_contact_stages(self) -> Dict[str, Any]:
+        """List all contact stages for the team."""
+        return self._get("/api/v1/contact_stages")
+
     def search_people(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Search people via mixed_people/search. Does NOT consume credits."""
         return self._post("/api/v1/mixed_people/api_search", params)

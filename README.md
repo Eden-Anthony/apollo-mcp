@@ -95,13 +95,19 @@ Get full company details (industry, size, funding, technologies) for 1-10 orgs. 
 
 Contacts are your CRM records. These tools use **contact IDs**, not people/org IDs from search.
 
+Stage names (e.g. "Cold", "Interested") are resolved automatically — no need to look up IDs manually.
+
+#### `list_contact_stages` — FREE
+
+List all pipeline stages for your team. Returns stage names, IDs, and categories.
+
 #### `search_contacts` — FREE
 
 Search your team's CRM contacts. Unlike `search_people`, this only returns contacts you've already added to Apollo.
 
 Parameters (all optional):
 - `q_keywords` — keyword search across name, title, company, email
-- `contact_stage_ids` — filter by stage IDs
+- `contact_stages` — filter by stage names or IDs, e.g. `["Cold", "Interested"]`
 - `owner_id` — filter by contact owner IDs
 - `sort_by_field` — e.g. `"contact_updated_at"`
 - `sort_ascending` — default false (newest first)
@@ -125,7 +131,7 @@ Update fields on 1-100 existing CRM contacts. Applies the same values to all spe
 Move 1-100 contacts to a new pipeline stage. Preferred over `update_contacts` when only the stage is changing.
 
 - `contact_ids` (required) — array of contact IDs
-- `contact_stage_id` (required) — new stage ID
+- `contact_stage` (required) — stage name (e.g. "Interested") or stage ID
 
 ## Typical Workflow
 

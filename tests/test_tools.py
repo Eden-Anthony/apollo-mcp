@@ -20,9 +20,18 @@ def client():
     return c
 
 
+FAKE_STAGES = [
+    {"id": "stage-1", "name": "Cold", "category": "in_progress", "display_order": 0},
+    {"id": "stage-2", "name": "Interested", "category": "succeeded", "display_order": 3},
+    {"id": "stage-3", "name": "Not Interested", "category": "failed", "display_order": 4},
+]
+
+
 @pytest.fixture
 def tools(client):
-    return ApolloTools(client)
+    t = ApolloTools(client)
+    t._stage_cache = FAKE_STAGES
+    return t
 
 
 # ---- schemas ----
@@ -34,6 +43,7 @@ def test_all_tools_registered():
         "search_organizations",
         "enrich_people",
         "enrich_organizations",
+        "list_contact_stages",
         "search_contacts",
         "create_contacts",
         "update_contacts",
@@ -150,7 +160,34 @@ def test_enrich_organizations_rejects_no_identifier():
         t.execute_tool("enrich_organizations", {"details": [{}]})
 
 
+# ---- list_contact_stages ----
+
+def test_list_contact_stages(tools, client):
+    client._get = MagicMock(return_value={
+        "contact_stages": FAKE_STAGES,
+    })
+    tools._stage_cache = None  # force a fetch
+
+    result = tools.execute_tool("list_contact_stages", {})
+
+    assert len(result["stages"]) == 3
+    assert result["stages"][0]["name"] == "Cold"
+    assert result["stages"][1]["name"] == "Interested"
+
+
 # ---- search_contacts ----
+
+def test_search_contacts_resolves_stage_names(tools, client):
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "first_name": "Jane", "contact_stage_id": "stage-1"}],
+        "pagination": {"total_entries": 1},
+    }
+
+    tools.execute_tool("search_contacts", {"contact_stages": ["Cold"]})
+
+    payload = client._post.call_args[0][1]
+    assert payload["contact_stage_ids"] == ["stage-1"]
+
 
 def test_search_contacts_returns_crm_contacts(tools, client):
     client._post.return_value = {
@@ -221,14 +258,14 @@ def test_update_contacts_rejects_no_fields():
 
 # ---- update_contact_stages ----
 
-def test_update_contact_stages(tools, client):
+def test_update_contact_stages_by_name(tools, client):
     client._post.return_value = {
         "contacts": [{"id": "c1", "contact_stage_id": "stage-2"}],
     }
 
     result = tools.execute_tool("update_contact_stages", {
         "contact_ids": ["c1"],
-        "contact_stage_id": "stage-2",
+        "contact_stage": "Interested",
     })
 
     assert result["updated"] == 1
@@ -236,12 +273,27 @@ def test_update_contact_stages(tools, client):
     assert payload["contact_stage_id"] == "stage-2"
 
 
+def test_update_contact_stages_by_id(tools, client):
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "contact_stage_id": "stage-2"}],
+    }
+
+    result = tools.execute_tool("update_contact_stages", {
+        "contact_ids": ["c1"],
+        "contact_stage": "stage-2",
+    })
+
+    payload = client._post.call_args[0][1]
+    assert payload["contact_stage_id"] == "stage-2"
+
+
 def test_update_contact_stages_rejects_missing_stage():
     t = ApolloTools(ApolloClient())
-    with pytest.raises(ValueError, match="contact_stage_id is required"):
+    t._stage_cache = FAKE_STAGES
+    with pytest.raises(ValueError, match="contact_stage is required"):
         t.execute_tool("update_contact_stages", {
             "contact_ids": ["c1"],
-            "contact_stage_id": "",
+            "contact_stage": "",
         })
 
 
@@ -278,6 +330,17 @@ def test_none_values_stripped_from_enriched_org(tools, client):
     org = result["organizations"][0]
     assert "phone" not in org
     assert "domain" not in org
+
+
+def test_contact_stage_name_in_output(tools, client):
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "first_name": "Jane", "contact_stage_id": "stage-2"}],
+        "pagination": {},
+    }
+
+    result = tools.execute_tool("search_contacts", {})
+    assert result["contacts"][0]["contact_stage"] == "Interested"
+    assert result["contacts"][0]["contact_stage_id"] == "stage-2"
 
 
 def test_null_matches_filtered(tools, client):

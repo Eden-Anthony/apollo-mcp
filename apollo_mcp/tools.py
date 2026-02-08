@@ -1,7 +1,7 @@
 """Tool schemas, execution dispatch, and response formatting for Apollo MCP."""
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .api import ApolloClient, ApolloAPIError
 
@@ -244,6 +244,18 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
             },
         },
         {
+            "name": "list_contact_stages",
+            "description": (
+                "List all contact pipeline stages for your team. FREE. "
+                "Returns stage names and IDs. Use this to discover valid stage names "
+                "before calling update_contact_stages."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+        {
             "name": "search_contacts",
             "description": (
                 "Search your CRM contacts (people you've already added to Apollo). FREE. "
@@ -258,10 +270,10 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                         "type": "string",
                         "description": "Keyword search across name, title, company, email, etc.",
                     },
-                    "contact_stage_ids": {
+                    "contact_stages": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Filter by contact stage IDs",
+                        "description": 'Filter by stage names (e.g. ["Cold", "Interested"]) or IDs',
                     },
                     "owner_id": {
                         "type": "array",
@@ -360,7 +372,8 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
             "description": (
                 "Move 1-100 CRM contacts to a new pipeline stage. "
                 "Preferred over update_contacts when only the stage is changing. "
-                "Requires contact IDs (not people IDs) and a contact_stage_id."
+                "Accepts stage name (e.g. \"Interested\") or stage ID. "
+                "Use list_contact_stages to see available stages."
             ),
             "inputSchema": {
                 "type": "object",
@@ -372,12 +385,12 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                         "minItems": 1,
                         "maxItems": 100,
                     },
-                    "contact_stage_id": {
+                    "contact_stage": {
                         "type": "string",
-                        "description": "The new contact stage ID to assign to all specified contacts.",
+                        "description": 'Stage name (e.g. "Interested", "Cold") or stage ID.',
                     },
                 },
-                "required": ["contact_ids", "contact_stage_id"],
+                "required": ["contact_ids", "contact_stage"],
             },
         },
     ]
@@ -388,10 +401,33 @@ class ApolloTools:
 
     def __init__(self, client: ApolloClient):
         self.client = client
+        self._stage_cache: Optional[List[Dict[str, Any]]] = None
+
+    def _get_stages(self) -> List[Dict[str, Any]]:
+        if self._stage_cache is None:
+            raw = self.client.list_contact_stages()
+            self._stage_cache = raw.get("contact_stages") or []
+        return self._stage_cache
+
+    def _stage_name_to_id(self, name_or_id: str) -> str:
+        """Resolve a stage name to its ID, or pass through if already an ID."""
+        for stage in self._get_stages():
+            if stage.get("name", "").lower() == name_or_id.lower():
+                return stage["id"]
+        # Assume it's already an ID
+        return name_or_id
+
+    def _stage_id_to_name(self, stage_id: str) -> Optional[str]:
+        for stage in self._get_stages():
+            if stage.get("id") == stage_id:
+                return stage.get("name")
+        return None
 
     def execute_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Dispatch tool call and return formatted result."""
-        if name == "search_people":
+        if name == "list_contact_stages":
+            return self._list_contact_stages()
+        elif name == "search_people":
             return self._search_people(arguments)
         elif name == "search_organizations":
             return self._search_organizations(arguments)
@@ -469,11 +505,30 @@ class ApolloTools:
 
     # ---- contacts ----
 
+    def _list_contact_stages(self) -> Dict[str, Any]:
+        stages = self._get_stages()
+        return {
+            "stages": [
+                {
+                    "id": s["id"],
+                    "name": s.get("name"),
+                    "category": s.get("category"),
+                    "order": s.get("display_order"),
+                }
+                for s in stages
+            ]
+        }
+
     def _search_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        # Resolve stage names to IDs before sending to API
+        if "contact_stages" in args:
+            args["contact_stage_ids"] = [
+                self._stage_name_to_id(s) for s in args.pop("contact_stages")
+            ]
         params = _clamp_pagination(_clean_params(args))
         raw = self.client.search_contacts(params)
 
-        contacts = [_format_contact(c) for c in raw.get("contacts") or []]
+        contacts = [self._format_contact_with_stage(c) for c in raw.get("contacts") or []]
         pagination = raw.get("pagination", {})
 
         return {
@@ -499,8 +554,8 @@ class ApolloTools:
 
         raw = self.client.create_contacts(contacts=contacts)
 
-        created = [_format_contact(c) for c in raw.get("contacts") or []]
-        existing = [_format_contact(c) for c in raw.get("existing_contacts") or []]
+        created = [self._format_contact_with_stage(c) for c in raw.get("contacts") or []]
+        existing = [self._format_contact_with_stage(c) for c in raw.get("existing_contacts") or []]
 
         return {
             "total_requested": len(contacts),
@@ -525,7 +580,7 @@ class ApolloTools:
 
         raw = self.client.update_contacts(contact_ids, **fields)
 
-        updated = [_format_contact(c) for c in raw.get("contacts") or []]
+        updated = [self._format_contact_with_stage(c) for c in raw.get("contacts") or []]
 
         return {
             "total_requested": len(contact_ids),
@@ -535,24 +590,34 @@ class ApolloTools:
 
     def _update_contact_stages(self, args: Dict[str, Any]) -> Dict[str, Any]:
         contact_ids = args.get("contact_ids", [])
-        contact_stage_id = args.get("contact_stage_id", "")
+        contact_stage = args.get("contact_stage", "")
 
         if len(contact_ids) > 100:
             raise ValueError("Maximum 100 contacts per request (API limit)")
         if len(contact_ids) == 0:
             raise ValueError("At least 1 contact_id required")
-        if not contact_stage_id:
-            raise ValueError("contact_stage_id is required")
+        if not contact_stage:
+            raise ValueError("contact_stage is required")
 
-        raw = self.client.update_contact_stages(contact_ids, contact_stage_id)
+        stage_id = self._stage_name_to_id(contact_stage)
+        raw = self.client.update_contact_stages(contact_ids, stage_id)
 
-        updated = [_format_contact(c) for c in raw.get("contacts") or raw.get("updated_contacts") or []]
+        updated = [self._format_contact_with_stage(c) for c in raw.get("contacts") or raw.get("updated_contacts") or []]
 
         return {
             "total_requested": len(contact_ids),
             "updated": len(updated),
             "contacts": updated,
         }
+
+    def _format_contact_with_stage(self, c: Dict[str, Any]) -> Dict[str, Any]:
+        result = _format_contact(c)
+        stage_id = result.get("contact_stage_id")
+        if stage_id:
+            name = self._stage_id_to_name(stage_id)
+            if name:
+                result["contact_stage"] = name
+        return result
 
     # ---- organizations ----
 

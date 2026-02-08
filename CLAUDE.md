@@ -24,10 +24,11 @@ APOLLO_API_KEY=your_key python -m apollo_mcp --debug
 - `search_organizations` — POST `/v1/mixed_companies/search`. 1 credit/result.
 - `enrich_people` — POST `/v1/people/bulk_match`. 1 credit/match. 1-10 people.
 - `enrich_organizations` — POST `/v1/organizations/bulk_enrich`. 1 credit/match. 1-10 orgs.
-- `search_contacts` — POST `/v1/contacts/search`. Free. Searches your CRM contacts.
+- `list_contact_stages` — GET `/v1/contact_stages`. Free. Returns stage names/IDs.
+- `search_contacts` — POST `/v1/contacts/search`. Free. Searches your CRM contacts. Accepts stage names.
 - `create_contacts` — POST `/v1/contacts/bulk_create`. 1-100 contacts. Deduplicates.
 - `update_contacts` — POST `/v1/contacts/bulk_update`. 1-100 contacts. Same fields to all.
-- `update_contact_stages` — POST `/v1/contacts/update_stages`. 1-100 contacts. Stage only.
+- `update_contact_stages` — POST `/v1/contacts/update_stages`. 1-100 contacts. Accepts stage name or ID.
 
 ## Adding New Functionality
 
