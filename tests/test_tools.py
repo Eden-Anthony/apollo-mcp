@@ -287,6 +287,52 @@ def test_update_contact_stages_by_id(tools, client):
     assert payload["contact_stage_id"] == "stage-2"
 
 
+def test_update_contact_stages_coerces_string_array(tools, client):
+    """MCP clients sometimes pass JSON arrays as strings."""
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "contact_stage_id": "stage-2"}],
+    }
+
+    result = tools.execute_tool("update_contact_stages", {
+        "contact_ids": '["c1", "c2"]',
+        "contact_stage": "Interested",
+    })
+
+    payload = client._post.call_args[0][1]
+    assert payload["contact_ids"] == ["c1", "c2"]
+
+
+def test_update_contact_stages_coerces_single_string(tools, client):
+    """A single string ID should be wrapped in a list."""
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "contact_stage_id": "stage-2"}],
+    }
+
+    result = tools.execute_tool("update_contact_stages", {
+        "contact_ids": "c1",
+        "contact_stage": "Interested",
+    })
+
+    payload = client._post.call_args[0][1]
+    assert payload["contact_ids"] == ["c1"]
+
+
+def test_create_contacts_coerces_string_array(tools, client):
+    """MCP clients sometimes pass JSON arrays as strings."""
+    import json
+    contacts = [{"first_name": "Jane", "email": "jane@acme.com"}]
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
+        "existing_contacts": [],
+    }
+
+    result = tools.execute_tool("create_contacts", {
+        "contacts": json.dumps(contacts),
+    })
+
+    assert result["created"] == 1
+
+
 def test_update_contact_stages_rejects_missing_stage():
     t = ApolloTools(ApolloClient())
     t._stage_cache = FAKE_STAGES

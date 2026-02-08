@@ -469,7 +469,7 @@ class ApolloTools:
     # ---- enrichment ----
 
     def _enrich_people(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        details = args.get("details", [])
+        details = _coerce_list(args.get("details", []))
 
         # Guardrail: hard cap at 10 (API limit)
         if len(details) > 10:
@@ -539,7 +539,7 @@ class ApolloTools:
         }
 
     def _create_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        contacts = args.get("contacts", [])
+        contacts = _coerce_list(args.get("contacts", []))
 
         if len(contacts) > 100:
             raise ValueError("Maximum 100 contacts per request (API limit)")
@@ -566,7 +566,7 @@ class ApolloTools:
         }
 
     def _update_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        contact_ids = args.get("contact_ids", [])
+        contact_ids = _coerce_list(args.get("contact_ids", []))
 
         if len(contact_ids) > 100:
             raise ValueError("Maximum 100 contacts per request (API limit)")
@@ -589,7 +589,7 @@ class ApolloTools:
         }
 
     def _update_contact_stages(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        contact_ids = args.get("contact_ids", [])
+        contact_ids = _coerce_list(args.get("contact_ids", []))
         contact_stage = args.get("contact_stage", "")
 
         if len(contact_ids) > 100:
@@ -638,7 +638,7 @@ class ApolloTools:
         }
 
     def _enrich_organizations(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        details = args.get("details", [])
+        details = _coerce_list(args.get("details", []))
 
         if len(details) > 10:
             raise ValueError("Maximum 10 organizations per enrichment request (API limit)")
@@ -667,6 +667,26 @@ class ApolloTools:
 
 
 # ---- helpers ----
+
+
+def _coerce_list(value: Any) -> list:
+    """Ensure a value is a list. Handles JSON-encoded strings from MCP clients."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        value = value.strip()
+        if value.startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return parsed
+            except (json.JSONDecodeError, ValueError):
+                pass
+        # Single value - wrap in a list
+        if value:
+            return [value]
+        return []
+    return []
 
 
 def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
