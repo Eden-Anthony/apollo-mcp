@@ -1,0 +1,480 @@
+"""Tool schemas, execution dispatch, and response formatting for Apollo MCP."""
+
+import json
+from typing import Any, Dict, List
+
+from .api import ApolloClient, ApolloAPIError
+
+
+def get_tool_schemas() -> List[Dict[str, Any]]:
+    """Return MCP tool schema definitions."""
+    return [
+        {
+            "name": "search_people",
+            "description": (
+                "Search for people in Apollo.io's database. "
+                "Does NOT consume credits. Does NOT return emails or phone numbers "
+                "(use Apollo enrichment endpoints for contact info). "
+                "All parameters are optional — combine them to narrow results."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "q_keywords": {
+                        "type": "string",
+                        "description": "Keyword search across name, title, company, etc.",
+                    },
+                    "q_organization_name": {
+                        "type": "string",
+                        "description": "Filter by company name, e.g. \"Stripe\"",
+                    },
+                    "person_titles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Job titles to filter by, e.g. ["CEO", "VP Engineering"]',
+                    },
+                    "person_seniorities": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "senior",
+                                "manager",
+                                "director",
+                                "vp",
+                                "c_suite",
+                                "owner",
+                                "partner",
+                            ],
+                        },
+                        "description": "Seniority levels to filter by",
+                    },
+                    "person_locations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Person locations, e.g. ["San Francisco, CA"]',
+                    },
+                    "organization_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Apollo organization IDs to scope search to",
+                    },
+                    "q_organization_domains": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Company domains, e.g. ["stripe.com"]',
+                    },
+                    "organization_locations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Company HQ locations",
+                    },
+                    "organization_num_employees_ranges": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Employee count ranges: "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10001+"',
+                    },
+                    "organization_industry_tag_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Industry tag IDs",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Page number (default 1, max 500)",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Results per page (default 25, max 100)",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+            },
+        },
+        {
+            "name": "search_organizations",
+            "description": (
+                "Search for companies/organizations in Apollo.io's database. "
+                "WARNING: This endpoint DOES consume Apollo credits. "
+                "All parameters are optional — combine them to narrow results."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "q_organization_name": {
+                        "type": "string",
+                        "description": "Company name search",
+                    },
+                    "organization_locations": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Company HQ locations",
+                    },
+                    "organization_industry_tag_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Industry tag IDs",
+                    },
+                    "organization_num_employees_ranges": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": 'Employee count ranges: "1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10001+"',
+                    },
+                    "revenue_range": {
+                        "type": "object",
+                        "properties": {
+                            "min": {"type": "number"},
+                            "max": {"type": "number"},
+                        },
+                        "description": "Revenue range filter with min/max in USD",
+                    },
+                    "organization_keywords": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Keywords to search in company descriptions",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Page number (default 1, max 500)",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Results per page (default 25, max 100)",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+            },
+        },
+        {
+            "name": "enrich_people",
+            "description": (
+                "Enrich 1-10 people with full contact details (email, phone, title, company, etc.) "
+                "using Apollo's bulk enrichment API. CONSUMES 1 CREDIT PER PERSON MATCHED. "
+                "Provide identifying info for each person — the more fields you give, the better the match. "
+                "At minimum provide a name + company/domain, OR a LinkedIn URL, OR an Apollo ID. "
+                "Does NOT return personal emails or phone numbers by default (set reveal flags to enable, "
+                "which may consume additional credits)."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "details": {
+                        "type": "array",
+                        "description": (
+                            "Array of 1-10 people to enrich. Each object should contain "
+                            "identifying fields like name + domain, linkedin_url, or Apollo id."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "first_name": {"type": "string", "description": "Person's first name"},
+                                "last_name": {"type": "string", "description": "Person's last name"},
+                                "name": {"type": "string", "description": "Full name (alternative to first/last)"},
+                                "email": {"type": "string", "description": "Known email address"},
+                                "organization_name": {"type": "string", "description": "Company name"},
+                                "domain": {"type": "string", "description": "Company domain, e.g. stripe.com"},
+                                "id": {"type": "string", "description": "Apollo person ID (from search results)"},
+                                "linkedin_url": {"type": "string", "description": "LinkedIn profile URL"},
+                            },
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                    },
+                    "reveal_personal_emails": {
+                        "type": "boolean",
+                        "description": "Retrieve personal emails. May consume additional credits. Default: false",
+                        "default": False,
+                    },
+                    "reveal_phone_number": {
+                        "type": "boolean",
+                        "description": "Retrieve phone numbers. May consume additional credits. Default: false",
+                        "default": False,
+                    },
+                },
+                "required": ["details"],
+            },
+        },
+        {
+            "name": "enrich_organizations",
+            "description": (
+                "Enrich 1-10 organizations with full company details (industry, size, funding, "
+                "technologies, etc.) using Apollo's bulk enrichment API. CONSUMES 1 CREDIT PER "
+                "ORGANIZATION MATCHED. Identify each org by domain (best), name, or Apollo ID."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "details": {
+                        "type": "array",
+                        "description": (
+                            "Array of 1-10 organizations to enrich. Each object should contain "
+                            "at least one identifying field: domain (best), name, or Apollo id."
+                        ),
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "domain": {
+                                    "type": "string",
+                                    "description": 'Company domain, e.g. "stripe.com" (best identifier)',
+                                },
+                                "name": {
+                                    "type": "string",
+                                    "description": "Company name",
+                                },
+                                "id": {
+                                    "type": "string",
+                                    "description": "Apollo organization ID (from search results)",
+                                },
+                            },
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                    },
+                },
+                "required": ["details"],
+            },
+        },
+    ]
+
+
+class ApolloTools:
+    """Executes Apollo MCP tools and formats responses."""
+
+    def __init__(self, client: ApolloClient):
+        self.client = client
+
+    def execute_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Dispatch tool call and return formatted result."""
+        if name == "search_people":
+            return self._search_people(arguments)
+        elif name == "search_organizations":
+            return self._search_organizations(arguments)
+        elif name == "enrich_people":
+            return self._enrich_people(arguments)
+        elif name == "enrich_organizations":
+            return self._enrich_organizations(arguments)
+        else:
+            raise ValueError(f"Unknown tool: {name}")
+
+    # ---- people ----
+
+    def _search_people(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        params = _clamp_pagination(_clean_params(args))
+        raw = self.client.search_people(params)
+
+        # Apollo returns people under "people" or "contacts" inconsistently
+        people_raw = raw.get("people") or raw.get("contacts") or []
+        # api_search puts total_entries at top level; search puts it in pagination
+        pagination = raw.get("pagination", {})
+
+        people = [_format_person(p) for p in people_raw]
+
+        return {
+            "total_results": raw.get("total_entries") or pagination.get("total_entries", len(people)),
+            "page": pagination.get("page", params.get("page", 1)),
+            "per_page": pagination.get("per_page", params.get("per_page", 25)),
+            "people": people,
+        }
+
+    # ---- enrichment ----
+
+    def _enrich_people(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        details = args.get("details", [])
+
+        # Guardrail: hard cap at 10 (API limit)
+        if len(details) > 10:
+            raise ValueError("Maximum 10 people per enrichment request (API limit)")
+        if len(details) == 0:
+            raise ValueError("At least 1 person required in details array")
+
+        # Validate each person has at least one identifying field
+        id_fields = {"first_name", "last_name", "name", "email", "organization_name",
+                      "domain", "id", "linkedin_url", "hashed_email"}
+        for i, person in enumerate(details):
+            if not any(person.get(f) for f in id_fields):
+                raise ValueError(
+                    f"Person at index {i} has no identifying fields. "
+                    "Provide at least name + domain, linkedin_url, or Apollo id."
+                )
+
+        raw = self.client.enrich_people(
+            details=details,
+            reveal_personal_emails=args.get("reveal_personal_emails", False),
+            reveal_phone_number=args.get("reveal_phone_number", False),
+        )
+
+        matches = [_format_enriched_person(m) for m in raw.get("matches", []) if m]
+
+        return {
+            "total_requested": raw.get("total_requested_enrichments", len(details)),
+            "matched": raw.get("unique_enriched_records", len(matches)),
+            "missing": raw.get("missing_records", 0),
+            "credits_consumed": raw.get("credits_consumed", 0),
+            "people": matches,
+        }
+
+    # ---- organizations ----
+
+    def _search_organizations(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        params = _clamp_pagination(_clean_params(args))
+        raw = self.client.search_organizations(params)
+
+        orgs_raw = raw.get("organizations") or raw.get("accounts") or []
+        pagination = raw.get("pagination", {})
+
+        organizations = [_format_organization(o) for o in orgs_raw]
+
+        return {
+            "total_results": pagination.get("total_entries", len(organizations)),
+            "page": pagination.get("page", params.get("page", 1)),
+            "per_page": pagination.get("per_page", params.get("per_page", 25)),
+            "organizations": organizations,
+        }
+
+    def _enrich_organizations(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        details = args.get("details", [])
+
+        if len(details) > 10:
+            raise ValueError("Maximum 10 organizations per enrichment request (API limit)")
+        if len(details) == 0:
+            raise ValueError("At least 1 organization required in details array")
+
+        id_fields = {"domain", "name", "id"}
+        for i, org in enumerate(details):
+            if not any(org.get(f) for f in id_fields):
+                raise ValueError(
+                    f"Organization at index {i} has no identifying fields. "
+                    "Provide at least domain, name, or Apollo id."
+                )
+
+        raw = self.client.enrich_organizations(details=details)
+
+        matches = [_format_enriched_organization(m) for m in raw.get("matches", []) if m]
+
+        return {
+            "total_requested": raw.get("total_requested_enrichments", len(details)),
+            "matched": raw.get("unique_enriched_records", len(matches)),
+            "missing": raw.get("missing_records", 0),
+            "credits_consumed": raw.get("credits_consumed", 0),
+            "organizations": matches,
+        }
+
+
+# ---- helpers ----
+
+
+def _clean_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip None and empty values before sending to API."""
+    return {k: v for k, v in params.items() if v is not None and v != "" and v != []}
+
+
+def _clamp_pagination(params: Dict[str, Any]) -> Dict[str, Any]:
+    """Enforce server-side pagination limits regardless of what the LLM sends."""
+    params["per_page"] = max(1, min(int(params.get("per_page", 25)), 100))
+    params["page"] = max(1, min(int(params.get("page", 1)), 500))
+    return params
+
+
+def _format_person(p: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten an Apollo person record to a scannable dict.
+
+    Handles both full records (from enrichment) and limited records
+    from api_search (obfuscated last names, has_* booleans).
+    """
+    org = p.get("organization") or {}
+
+    # Build name: api_search returns first_name + last_name_obfuscated
+    name = p.get("name")
+    if not name:
+        first = p.get("first_name", "")
+        last = p.get("last_name") or p.get("last_name_obfuscated", "")
+        name = f"{first} {last}".strip() or None
+
+    result = {
+        "id": p.get("id"),
+        "name": name,
+        "title": p.get("title"),
+        "seniority": p.get("seniority"),
+        "city": p.get("city"),
+        "state": p.get("state"),
+        "country": p.get("country"),
+        "linkedin_url": p.get("linkedin_url"),
+        "company": org.get("name") or p.get("organization_name"),
+        "company_domain": org.get("primary_domain"),
+        "company_industry": org.get("industry"),
+        "company_size": org.get("estimated_num_employees"),
+    }
+
+    # Strip None values for cleaner output
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def _format_enriched_person(p: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a fully enriched person record with contact details."""
+    org = p.get("organization") or {}
+
+    name = p.get("name")
+    if not name:
+        first = p.get("first_name", "")
+        last = p.get("last_name", "")
+        name = f"{first} {last}".strip() or None
+
+    result = {
+        "id": p.get("id"),
+        "name": name,
+        "title": p.get("title"),
+        "seniority": p.get("seniority"),
+        "email": p.get("email"),
+        "email_status": p.get("email_status"),
+        "phone": (p.get("phone_numbers") or [{}])[0].get("sanitized_number") if p.get("phone_numbers") else None,
+        "city": p.get("city"),
+        "state": p.get("state"),
+        "country": p.get("country"),
+        "linkedin_url": p.get("linkedin_url"),
+        "company": org.get("name") or p.get("organization_name"),
+        "company_domain": org.get("primary_domain"),
+        "company_industry": org.get("industry"),
+        "company_size": org.get("estimated_num_employees"),
+        "departments": p.get("departments"),
+    }
+
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def _format_organization(o: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten an Apollo organization record to a scannable dict."""
+    return {
+        "id": o.get("id"),
+        "name": o.get("name"),
+        "domain": o.get("primary_domain") or o.get("website_url"),
+        "linkedin_url": o.get("linkedin_url"),
+        "industry": o.get("industry"),
+        "estimated_employees": o.get("estimated_num_employees"),
+        "founded_year": o.get("founded_year"),
+        "city": o.get("city"),
+        "state": o.get("state"),
+        "country": o.get("country"),
+        "annual_revenue": o.get("annual_revenue"),
+        "total_funding": o.get("total_funding"),
+        "latest_funding_stage": o.get("latest_funding_stage"),
+        "keywords": o.get("keywords"),
+        "technologies": o.get("technologies"),
+    }
+
+
+def _format_enriched_organization(o: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a fully enriched organization record."""
+    result = _format_organization(o)
+    result["phone"] = o.get("phone")
+    result["website_url"] = o.get("website_url")
+    return {k: v for k, v in result.items() if v is not None}
