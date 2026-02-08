@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Apollo MCP is a lean MCP server that exposes Apollo.io people and organization search to AI agents via STDIO JSON-RPC 2.0. Zero external dependencies.
+Apollo MCP is a lean MCP server that exposes Apollo.io search, enrichment, and contact management to AI agents via STDIO JSON-RPC 2.0. Zero external dependencies.
 
 ## Quick Start
 
@@ -20,8 +20,13 @@ APOLLO_API_KEY=your_key python -m apollo_mcp --debug
 
 ## Tools
 
-- `search_people` — POST `/v1/mixed_people/search`. Free (no credits). No emails/phones returned.
-- `search_organizations` — POST `/v1/mixed_companies/search`. Consumes credits.
+- `search_people` — POST `/v1/mixed_people/api_search`. Free. No emails/phones.
+- `search_organizations` — POST `/v1/mixed_companies/search`. 1 credit/result.
+- `enrich_people` — POST `/v1/people/bulk_match`. 1 credit/match. 1-10 people.
+- `enrich_organizations` — POST `/v1/organizations/bulk_enrich`. 1 credit/match. 1-10 orgs.
+- `create_contacts` — POST `/v1/contacts/bulk_create`. 1-100 contacts. Deduplicates.
+- `update_contacts` — POST `/v1/contacts/bulk_update`. 1-100 contacts. Same fields to all.
+- `update_contact_stages` — POST `/v1/contacts/update_stages`. 1-100 contacts. Stage only.
 
 ## Error Handling
 
