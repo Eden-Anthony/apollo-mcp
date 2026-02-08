@@ -244,6 +244,66 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                 "required": ["details"],
             },
         },
+        {
+            "name": "create_contacts",
+            "description": (
+                "Create 1-100 contacts in Apollo. Does NOT update existing contacts — "
+                "duplicates are returned separately without modification. "
+                "Use for both single and bulk contact creation."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "contacts": {
+                        "type": "array",
+                        "description": "Array of 1-100 contacts to create.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "first_name": {"type": "string", "description": "First name"},
+                                "last_name": {"type": "string", "description": "Last name"},
+                                "email": {"type": "string", "description": "Email address"},
+                                "phone_number": {"type": "string", "description": "Phone number"},
+                                "title": {"type": "string", "description": "Job title"},
+                                "organization_name": {"type": "string", "description": "Company name"},
+                                "account_id": {"type": "string", "description": "Apollo account ID to associate with"},
+                                "owner_id": {"type": "string", "description": "Apollo user ID for contact owner"},
+                                "contact_stage_id": {"type": "string", "description": "Contact stage ID"},
+                            },
+                        },
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                },
+                "required": ["contacts"],
+            },
+        },
+        {
+            "name": "update_contacts",
+            "description": (
+                "Update 1-100 existing contacts in Apollo. Applies the same field values "
+                "to all specified contacts. Identify contacts by their Apollo IDs "
+                "(from search or create results)."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "contact_ids": {
+                        "type": "array",
+                        "description": "Apollo contact IDs to update (1-100).",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                    "owner_id": {"type": "string", "description": "New contact owner (Apollo user ID)"},
+                    "contact_stage_id": {"type": "string", "description": "New contact stage ID"},
+                    "title": {"type": "string", "description": "New job title"},
+                    "organization_name": {"type": "string", "description": "New company name"},
+                    "account_id": {"type": "string", "description": "Apollo account ID to associate with"},
+                },
+                "required": ["contact_ids"],
+            },
+        },
     ]
 
 
@@ -263,6 +323,10 @@ class ApolloTools:
             return self._enrich_people(arguments)
         elif name == "enrich_organizations":
             return self._enrich_organizations(arguments)
+        elif name == "create_contacts":
+            return self._create_contacts(arguments)
+        elif name == "update_contacts":
+            return self._update_contacts(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -321,6 +385,58 @@ class ApolloTools:
             "missing": raw.get("missing_records", 0),
             "credits_consumed": raw.get("credits_consumed", 0),
             "people": matches,
+        }
+
+    # ---- contacts ----
+
+    def _create_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        contacts = args.get("contacts", [])
+
+        if len(contacts) > 100:
+            raise ValueError("Maximum 100 contacts per request (API limit)")
+        if len(contacts) == 0:
+            raise ValueError("At least 1 contact required in contacts array")
+
+        for i, c in enumerate(contacts):
+            if not any(c.get(f) for f in ("first_name", "last_name", "email")):
+                raise ValueError(
+                    f"Contact at index {i} needs at least a name or email."
+                )
+
+        raw = self.client.create_contacts(contacts=contacts)
+
+        created = [_format_contact(c) for c in raw.get("contacts") or []]
+        existing = [_format_contact(c) for c in raw.get("existing_contacts") or []]
+
+        return {
+            "total_requested": len(contacts),
+            "created": len(created),
+            "already_existed": len(existing),
+            "new_contacts": created,
+            "existing_contacts": existing,
+        }
+
+    def _update_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        contact_ids = args.get("contact_ids", [])
+
+        if len(contact_ids) > 100:
+            raise ValueError("Maximum 100 contacts per request (API limit)")
+        if len(contact_ids) == 0:
+            raise ValueError("At least 1 contact_id required")
+
+        fields = {k: v for k, v in args.items()
+                  if k != "contact_ids" and v is not None}
+        if not fields:
+            raise ValueError("Provide at least one field to update")
+
+        raw = self.client.update_contacts(contact_ids, **fields)
+
+        updated = [_format_contact(c) for c in raw.get("contacts") or []]
+
+        return {
+            "total_requested": len(contact_ids),
+            "updated": len(updated),
+            "contacts": updated,
         }
 
     # ---- organizations ----
@@ -477,4 +593,21 @@ def _format_enriched_organization(o: Dict[str, Any]) -> Dict[str, Any]:
     result = _format_organization(o)
     result["phone"] = o.get("phone")
     result["website_url"] = o.get("website_url")
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def _format_contact(c: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a contact record from bulk_create response."""
+    result = {
+        "id": c.get("id"),
+        "first_name": c.get("first_name"),
+        "last_name": c.get("last_name"),
+        "email": c.get("email"),
+        "phone_number": c.get("phone_number"),
+        "title": c.get("title"),
+        "organization_name": c.get("organization_name"),
+        "account_id": c.get("account_id"),
+        "owner_id": c.get("owner_id"),
+        "contact_stage_id": c.get("contact_stage_id"),
+    }
     return {k: v for k, v in result.items() if v is not None}

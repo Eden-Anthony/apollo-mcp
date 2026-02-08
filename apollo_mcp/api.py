@@ -94,3 +94,13 @@ class ApolloClient:
     def enrich_organizations(self, details: list) -> Dict[str, Any]:
         """Bulk enrich organizations via organizations/bulk_enrich. DOES consume credits."""
         return self._post("/api/v1/organizations/bulk_enrich", {"details": details})
+
+    def create_contacts(self, contacts: list) -> Dict[str, Any]:
+        """Bulk create contacts via contacts/bulk_create. Does NOT update existing."""
+        return self._post("/api/v1/contacts/bulk_create", {"contacts": contacts})
+
+    def update_contacts(self, contact_ids: list, **fields) -> Dict[str, Any]:
+        """Bulk update contacts via contacts/bulk_update."""
+        payload: Dict[str, Any] = {"contact_ids": contact_ids}
+        payload.update(fields)
+        return self._post("/api/v1/contacts/bulk_update", payload)
