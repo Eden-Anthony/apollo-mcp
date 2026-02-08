@@ -304,6 +304,30 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                 "required": ["contact_ids"],
             },
         },
+        {
+            "name": "update_contact_stages",
+            "description": (
+                "Set the contact stage for 1-100 contacts. Use this instead of "
+                "update_contacts when you only need to change the stage."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "contact_ids": {
+                        "type": "array",
+                        "description": "Apollo contact IDs to update (1-100).",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                    "contact_stage_id": {
+                        "type": "string",
+                        "description": "The new contact stage ID to assign to all specified contacts.",
+                    },
+                },
+                "required": ["contact_ids", "contact_stage_id"],
+            },
+        },
     ]
 
 
@@ -327,6 +351,8 @@ class ApolloTools:
             return self._create_contacts(arguments)
         elif name == "update_contacts":
             return self._update_contacts(arguments)
+        elif name == "update_contact_stages":
+            return self._update_contact_stages(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -432,6 +458,27 @@ class ApolloTools:
         raw = self.client.update_contacts(contact_ids, **fields)
 
         updated = [_format_contact(c) for c in raw.get("contacts") or []]
+
+        return {
+            "total_requested": len(contact_ids),
+            "updated": len(updated),
+            "contacts": updated,
+        }
+
+    def _update_contact_stages(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        contact_ids = args.get("contact_ids", [])
+        contact_stage_id = args.get("contact_stage_id", "")
+
+        if len(contact_ids) > 100:
+            raise ValueError("Maximum 100 contacts per request (API limit)")
+        if len(contact_ids) == 0:
+            raise ValueError("At least 1 contact_id required")
+        if not contact_stage_id:
+            raise ValueError("contact_stage_id is required")
+
+        raw = self.client.update_contact_stages(contact_ids, contact_stage_id)
+
+        updated = [_format_contact(c) for c in raw.get("contacts") or raw.get("updated_contacts") or []]
 
         return {
             "total_requested": len(contact_ids),

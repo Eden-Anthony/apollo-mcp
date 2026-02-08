@@ -104,3 +104,10 @@ class ApolloClient:
         payload: Dict[str, Any] = {"contact_ids": contact_ids}
         payload.update(fields)
         return self._post("/api/v1/contacts/bulk_update", payload)
+
+    def update_contact_stages(self, contact_ids: list, contact_stage_id: str) -> Dict[str, Any]:
+        """Update contact stage for multiple contacts."""
+        return self._post("/api/v1/contacts/update_stages", {
+            "contact_ids": contact_ids,
+            "contact_stage_id": contact_stage_id,
+        })
