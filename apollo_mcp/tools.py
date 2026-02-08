@@ -12,10 +12,10 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "search_people",
             "description": (
-                "Search for people in Apollo.io's database. "
-                "Does NOT consume credits. Does NOT return emails or phone numbers "
-                "(use Apollo enrichment endpoints for contact info). "
-                "All parameters are optional — combine them to narrow results."
+                "Search Apollo's people database. FREE — does not consume credits. "
+                "Returns names, titles, companies, and LinkedIn URLs but NOT emails or phones. "
+                "To get contact details, pass the results to enrich_people. "
+                "All parameters are optional — combine to narrow results."
             ),
             "inputSchema": {
                 "type": "object",
@@ -99,9 +99,10 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "search_organizations",
             "description": (
-                "Search for companies/organizations in Apollo.io's database. "
-                "WARNING: This endpoint DOES consume Apollo credits. "
-                "All parameters are optional — combine them to narrow results."
+                "Search Apollo's organization database. COSTS 1 CREDIT PER RESULT. "
+                "Returns company name, domain, industry, size, funding, and technologies. "
+                "To get full details, pass results to enrich_organizations. "
+                "All parameters are optional — combine to narrow results."
             ),
             "inputSchema": {
                 "type": "object",
@@ -158,12 +159,10 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "enrich_people",
             "description": (
-                "Enrich 1-10 people with full contact details (email, phone, title, company, etc.) "
-                "using Apollo's bulk enrichment API. CONSUMES 1 CREDIT PER PERSON MATCHED. "
-                "Provide identifying info for each person — the more fields you give, the better the match. "
-                "At minimum provide a name + company/domain, OR a LinkedIn URL, OR an Apollo ID. "
-                "Does NOT return personal emails or phone numbers by default (set reveal flags to enable, "
-                "which may consume additional credits)."
+                "Get full contact details (email, phone, title, company) for 1-10 people. "
+                "COSTS 1 CREDIT PER MATCH. Identify each person by name + domain, "
+                "LinkedIn URL, or Apollo person ID from search_people results. "
+                "Personal emails and phone numbers require reveal flags (additional credits)."
             ),
             "inputSchema": {
                 "type": "object",
@@ -207,9 +206,9 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "enrich_organizations",
             "description": (
-                "Enrich 1-10 organizations with full company details (industry, size, funding, "
-                "technologies, etc.) using Apollo's bulk enrichment API. CONSUMES 1 CREDIT PER "
-                "ORGANIZATION MATCHED. Identify each org by domain (best), name, or Apollo ID."
+                "Get full company details (industry, size, funding, technologies) for 1-10 orgs. "
+                "COSTS 1 CREDIT PER MATCH. Identify each org by domain (best), name, "
+                "or Apollo org ID from search_organizations results."
             ),
             "inputSchema": {
                 "type": "object",
@@ -247,9 +246,10 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "create_contacts",
             "description": (
-                "Create 1-100 contacts in Apollo. Does NOT update existing contacts — "
-                "duplicates are returned separately without modification. "
-                "Use for both single and bulk contact creation."
+                "Add 1-100 people to your Apollo CRM as contacts. "
+                "Existing matches are returned in existing_contacts without modification — "
+                "use update_contacts to modify those. "
+                "Returns contact IDs needed for update_contacts and update_contact_stages."
             ),
             "inputSchema": {
                 "type": "object",
@@ -281,9 +281,9 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "update_contacts",
             "description": (
-                "Update 1-100 existing contacts in Apollo. Applies the same field values "
-                "to all specified contacts. Identify contacts by their Apollo IDs "
-                "(from search or create results)."
+                "Update fields on 1-100 existing CRM contacts. Applies the same values "
+                "to all specified contacts. Requires contact IDs from create_contacts results. "
+                "Note: these are contact IDs, not people IDs from search_people."
             ),
             "inputSchema": {
                 "type": "object",
@@ -307,8 +307,9 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
         {
             "name": "update_contact_stages",
             "description": (
-                "Set the contact stage for 1-100 contacts. Use this instead of "
-                "update_contacts when you only need to change the stage."
+                "Move 1-100 CRM contacts to a new pipeline stage. "
+                "Preferred over update_contacts when only the stage is changing. "
+                "Requires contact IDs (not people IDs) and a contact_stage_id."
             ),
             "inputSchema": {
                 "type": "object",
