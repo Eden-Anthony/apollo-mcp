@@ -48,6 +48,8 @@ def test_all_tools_registered():
         "create_contacts",
         "update_contacts",
         "update_contact_stages",
+        "search_sequences",
+        "add_contacts_to_sequence",
     ]
 
 
@@ -400,3 +402,64 @@ def test_null_matches_filtered(tools, client):
     })
 
     assert len(result["people"]) == 1
+
+
+# ---- search_sequences ----
+
+def test_search_sequences_formats_results(tools, client):
+    client._post.return_value = {
+        "emailer_campaigns": [
+            {
+                "id": "seq1",
+                "name": "Outbound Q1",
+                "active": True,
+                "num_steps": 5,
+                "created_at": "2025-01-01T00:00:00Z",
+            }
+        ],
+        "pagination": {"total_entries": 1, "page": 1, "per_page": 25},
+    }
+
+    result = tools.execute_tool("search_sequences", {"q_keywords": "Outbound"})
+
+    assert result["total_results"] == 1
+    assert len(result["sequences"]) == 1
+    assert result["sequences"][0]["name"] == "Outbound Q1"
+    assert result["sequences"][0]["active"] is True
+    assert result["sequences"][0]["num_steps"] == 5
+
+
+# ---- add_contacts_to_sequence ----
+
+def test_add_contacts_to_sequence_passes_ids(tools, client):
+    client._post.return_value = {
+        "contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
+    }
+
+    result = tools.execute_tool("add_contacts_to_sequence", {
+        "sequence_id": "seq1",
+        "contact_ids": ["c1"],
+    })
+
+    assert result["sequence_id"] == "seq1"
+    assert result["contacts_added"] == 1
+    payload = client._post.call_args[0][1]
+    assert payload["contact_ids"] == ["c1"]
+
+
+def test_add_contacts_to_sequence_rejects_empty_ids():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="At least 1"):
+        t.execute_tool("add_contacts_to_sequence", {
+            "sequence_id": "seq1",
+            "contact_ids": [],
+        })
+
+
+def test_add_contacts_to_sequence_rejects_missing_sequence_id():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="sequence_id is required"):
+        t.execute_tool("add_contacts_to_sequence", {
+            "sequence_id": "",
+            "contact_ids": ["c1"],
+        })

@@ -393,6 +393,62 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                 "required": ["contact_ids", "contact_stage"],
             },
         },
+        {
+            "name": "search_sequences",
+            "description": (
+                "Search your team's email sequences. FREE. Returns sequence names, IDs, "
+                "and status. Use the sequence ID with add_contacts_to_sequence. "
+                "Requires a master API key."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "q_keywords": {
+                        "type": "string",
+                        "description": "Keyword search across sequence names.",
+                    },
+                    "page": {
+                        "type": "integer",
+                        "description": "Page number (default 1, max 500)",
+                        "default": 1,
+                        "minimum": 1,
+                        "maximum": 500,
+                    },
+                    "per_page": {
+                        "type": "integer",
+                        "description": "Results per page (default 25, max 100)",
+                        "default": 25,
+                        "minimum": 1,
+                        "maximum": 100,
+                    },
+                },
+            },
+        },
+        {
+            "name": "add_contacts_to_sequence",
+            "description": (
+                "Add 1-100 CRM contacts to an email sequence. Requires contact IDs "
+                "(from create_contacts or search_contacts) and a sequence ID "
+                "(from search_sequences). Requires a master API key."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "sequence_id": {
+                        "type": "string",
+                        "description": "Apollo sequence ID (from search_sequences results).",
+                    },
+                    "contact_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Apollo contact IDs to add to the sequence (1-100).",
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                },
+                "required": ["sequence_id", "contact_ids"],
+            },
+        },
     ]
 
 
@@ -443,6 +499,10 @@ class ApolloTools:
             return self._update_contacts(arguments)
         elif name == "update_contact_stages":
             return self._update_contact_stages(arguments)
+        elif name == "search_sequences":
+            return self._search_sequences(arguments)
+        elif name == "add_contacts_to_sequence":
+            return self._add_contacts_to_sequence(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -619,6 +679,45 @@ class ApolloTools:
                 result["contact_stage"] = name
         return result
 
+    # ---- sequences ----
+
+    def _search_sequences(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        params = _clamp_pagination(_clean_params(args))
+        raw = self.client.search_sequences(params)
+
+        campaigns = raw.get("emailer_campaigns") or []
+        pagination = raw.get("pagination", {})
+
+        sequences = [_format_sequence(s) for s in campaigns]
+
+        return {
+            "total_results": pagination.get("total_entries", len(sequences)),
+            "page": pagination.get("page", params.get("page", 1)),
+            "per_page": pagination.get("per_page", params.get("per_page", 25)),
+            "sequences": sequences,
+        }
+
+    def _add_contacts_to_sequence(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        contact_ids = _coerce_list(args.get("contact_ids", []))
+        sequence_id = (args.get("sequence_id") or "").strip()
+
+        if not sequence_id:
+            raise ValueError("sequence_id is required")
+        if len(contact_ids) == 0:
+            raise ValueError("At least 1 contact_id required")
+        if len(contact_ids) > 100:
+            raise ValueError("Maximum 100 contacts per request (API limit)")
+
+        raw = self.client.add_contacts_to_sequence(sequence_id, contact_ids)
+
+        contacts = [_format_contact(c) for c in raw.get("contacts") or []]
+
+        return {
+            "sequence_id": sequence_id,
+            "contacts_added": len(contacts),
+            "contacts": contacts,
+        }
+
     # ---- organizations ----
 
     def _search_organizations(self, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -793,6 +892,18 @@ def _format_enriched_organization(o: Dict[str, Any]) -> Dict[str, Any]:
     result = _format_organization(o)
     result["phone"] = o.get("phone")
     result["website_url"] = o.get("website_url")
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def _format_sequence(s: Dict[str, Any]) -> Dict[str, Any]:
+    """Flatten an Apollo sequence/emailer_campaign record."""
+    result = {
+        "id": s.get("id"),
+        "name": s.get("name"),
+        "active": s.get("active"),
+        "num_steps": s.get("num_steps"),
+        "created_at": s.get("created_at"),
+    }
     return {k: v for k, v in result.items() if v is not None}
 
 

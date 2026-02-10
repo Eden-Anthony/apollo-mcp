@@ -133,13 +133,33 @@ Move 1-100 contacts to a new pipeline stage. Preferred over `update_contacts` wh
 - `contact_ids` (required) — array of contact IDs
 - `contact_stage` (required) — stage name (e.g. "Interested") or stage ID
 
+### Sequences
+
+Sequence tools require a **master API key** (not a regular key).
+
+#### `search_sequences` — FREE
+
+Search your team's email sequences. Returns sequence names, IDs, and status.
+
+Parameters (all optional):
+- `q_keywords` — keyword search across sequence names
+- `page` (default 1) / `per_page` (default 25, max 100)
+
+#### `add_contacts_to_sequence`
+
+Add 1-100 CRM contacts to an email sequence.
+
+- `sequence_id` (required) — Apollo sequence ID (from `search_sequences`)
+- `contact_ids` (required) — array of contact IDs (from `create_contacts` or `search_contacts`)
+
 ## Typical Workflow
 
 ```
-search_people → enrich_people → create_contacts → update_contacts / update_contact_stages
+search_people → enrich_people → create_contacts → search_sequences → add_contacts_to_sequence
 ```
 
 1. **Search** to find people or orgs (free for people, credits for orgs)
 2. **Enrich** to get full contact details (1 credit each)
 3. **Create contacts** to add them to your CRM
 4. **Update** contacts or move them through pipeline stages
+5. **Add to sequences** to start automated email outreach

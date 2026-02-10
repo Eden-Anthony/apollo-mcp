@@ -29,6 +29,8 @@ APOLLO_API_KEY=your_key python -m apollo_mcp --debug
 - `create_contacts` — POST `/v1/contacts/bulk_create`. 1-100 contacts. Deduplicates.
 - `update_contacts` — POST `/v1/contacts/bulk_update`. 1-100 contacts. Same fields to all.
 - `update_contact_stages` — POST `/v1/contacts/update_stages`. 1-100 contacts. Accepts stage name or ID.
+- `search_sequences` — POST `/v1/emailer_campaigns/search`. Free. Requires master API key.
+- `add_contacts_to_sequence` — POST `/v1/emailer_campaigns/{id}/add_contact_ids`. Requires master API key.
 
 ## Adding New Functionality
 

@@ -155,3 +155,13 @@ class ApolloClient:
             "contact_ids": contact_ids,
             "contact_stage_id": contact_stage_id,
         })
+
+    def search_sequences(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Search sequences via emailer_campaigns/search."""
+        return self._post("/api/v1/emailer_campaigns/search", params)
+
+    def add_contacts_to_sequence(self, sequence_id: str, contact_ids: list) -> Dict[str, Any]:
+        """Add contacts to a sequence."""
+        return self._post(f"/api/v1/emailer_campaigns/{sequence_id}/add_contact_ids", {
+            "contact_ids": contact_ids,
+        })
