@@ -425,11 +425,22 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
             },
         },
         {
+            "name": "list_email_accounts",
+            "description": (
+                "List linked email accounts for your team. FREE. Returns email account IDs "
+                "needed for add_contacts_to_sequence."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+        {
             "name": "add_contacts_to_sequence",
             "description": (
-                "Add 1-100 CRM contacts to an email sequence. Requires contact IDs "
-                "(from create_contacts or search_contacts) and a sequence ID "
-                "(from search_sequences). Requires a master API key."
+                "Add 1-100 CRM contacts to an email sequence. Requires an email_account_id "
+                "(from list_email_accounts), contact IDs (from create_contacts or search_contacts), "
+                "and a sequence ID (from search_sequences). Requires a master API key."
             ),
             "inputSchema": {
                 "type": "object",
@@ -445,8 +456,12 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                         "minItems": 1,
                         "maxItems": 100,
                     },
+                    "email_account_id": {
+                        "type": "string",
+                        "description": "Email account ID to send from (from list_email_accounts).",
+                    },
                 },
-                "required": ["sequence_id", "contact_ids"],
+                "required": ["sequence_id", "contact_ids", "email_account_id"],
             },
         },
     ]
@@ -501,6 +516,8 @@ class ApolloTools:
             return self._update_contact_stages(arguments)
         elif name == "search_sequences":
             return self._search_sequences(arguments)
+        elif name == "list_email_accounts":
+            return self._list_email_accounts()
         elif name == "add_contacts_to_sequence":
             return self._add_contacts_to_sequence(arguments)
         else:
@@ -697,18 +714,32 @@ class ApolloTools:
             "sequences": sequences,
         }
 
+    def _list_email_accounts(self) -> Dict[str, Any]:
+        raw = self.client.list_email_accounts()
+        accounts = raw.get("email_accounts") or []
+        return {
+            "total": len(accounts),
+            "email_accounts": [
+                {k: v for k, v in a.items() if v is not None}
+                for a in accounts
+            ],
+        }
+
     def _add_contacts_to_sequence(self, args: Dict[str, Any]) -> Dict[str, Any]:
         contact_ids = _coerce_list(args.get("contact_ids", []))
         sequence_id = (args.get("sequence_id") or "").strip()
+        email_account_id = (args.get("email_account_id") or "").strip()
 
         if not sequence_id:
             raise ValueError("sequence_id is required")
+        if not email_account_id:
+            raise ValueError("email_account_id is required")
         if len(contact_ids) == 0:
             raise ValueError("At least 1 contact_id required")
         if len(contact_ids) > 100:
             raise ValueError("Maximum 100 contacts per request (API limit)")
 
-        raw = self.client.add_contacts_to_sequence(sequence_id, contact_ids)
+        raw = self.client.add_contacts_to_sequence(sequence_id, contact_ids, email_account_id)
 
         contacts = [_format_contact(c) for c in raw.get("contacts") or []]
 

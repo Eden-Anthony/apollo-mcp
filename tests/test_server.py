@@ -40,7 +40,7 @@ def test_initialize_returns_capabilities(server):
 def test_tools_list_returns_all_tools(server):
     resp = send_and_capture(server, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
     names = [t["name"] for t in resp["result"]["tools"]]
-    assert len(names) == 11
+    assert len(names) == 12
     assert "search_people" in names
     assert "create_contacts" in names
 

@@ -160,8 +160,17 @@ class ApolloClient:
         """Search sequences via emailer_campaigns/search."""
         return self._post("/api/v1/emailer_campaigns/search", params)
 
-    def add_contacts_to_sequence(self, sequence_id: str, contact_ids: list) -> Dict[str, Any]:
+    def list_email_accounts(self) -> Dict[str, Any]:
+        """List linked email accounts."""
+        return self._get("/api/v1/email_accounts")
+
+    def add_contacts_to_sequence(self, sequence_id: str, contact_ids: list,
+                                 email_account_id: str = "") -> Dict[str, Any]:
         """Add contacts to a sequence."""
-        return self._post(f"/api/v1/emailer_campaigns/{sequence_id}/add_contact_ids", {
+        payload: Dict[str, Any] = {
             "contact_ids": contact_ids,
-        })
+            "emailer_campaign_id": sequence_id,
+        }
+        if email_account_id:
+            payload["send_email_from_email_account_id"] = email_account_id
+        return self._post(f"/api/v1/emailer_campaigns/{sequence_id}/add_contact_ids", payload)

@@ -49,6 +49,7 @@ def test_all_tools_registered():
         "update_contacts",
         "update_contact_stages",
         "search_sequences",
+        "list_email_accounts",
         "add_contacts_to_sequence",
     ]
 
@@ -429,6 +430,21 @@ def test_search_sequences_formats_results(tools, client):
     assert result["sequences"][0]["num_steps"] == 5
 
 
+# ---- list_email_accounts ----
+
+def test_list_email_accounts(tools, client):
+    client._get = MagicMock(return_value={
+        "email_accounts": [
+            {"id": "ea1", "email": "alice@acme.com", "default": True},
+            {"id": "ea2", "email": "bob@acme.com", "default": False},
+        ],
+    })
+
+    result = tools.execute_tool("list_email_accounts", {})
+    assert result["total"] == 2
+    assert result["email_accounts"][0]["id"] == "ea1"
+
+
 # ---- add_contacts_to_sequence ----
 
 def test_add_contacts_to_sequence_passes_ids(tools, client):
@@ -439,12 +455,14 @@ def test_add_contacts_to_sequence_passes_ids(tools, client):
     result = tools.execute_tool("add_contacts_to_sequence", {
         "sequence_id": "seq1",
         "contact_ids": ["c1"],
+        "email_account_id": "ea1",
     })
 
     assert result["sequence_id"] == "seq1"
     assert result["contacts_added"] == 1
     payload = client._post.call_args[0][1]
     assert payload["contact_ids"] == ["c1"]
+    assert payload["send_email_from_email_account_id"] == "ea1"
 
 
 def test_add_contacts_to_sequence_rejects_empty_ids():
@@ -453,6 +471,7 @@ def test_add_contacts_to_sequence_rejects_empty_ids():
         t.execute_tool("add_contacts_to_sequence", {
             "sequence_id": "seq1",
             "contact_ids": [],
+            "email_account_id": "ea1",
         })
 
 
@@ -461,5 +480,15 @@ def test_add_contacts_to_sequence_rejects_missing_sequence_id():
     with pytest.raises(ValueError, match="sequence_id is required"):
         t.execute_tool("add_contacts_to_sequence", {
             "sequence_id": "",
+            "contact_ids": ["c1"],
+            "email_account_id": "ea1",
+        })
+
+
+def test_add_contacts_to_sequence_rejects_missing_email_account_id():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="email_account_id is required"):
+        t.execute_tool("add_contacts_to_sequence", {
+            "sequence_id": "seq1",
             "contact_ids": ["c1"],
         })
