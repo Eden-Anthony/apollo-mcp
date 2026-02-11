@@ -162,7 +162,7 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                 "Get full contact details (email, phone, title, company) for 1-10 people. "
                 "COSTS 1 CREDIT PER MATCH. Identify each person by name + domain, "
                 "LinkedIn URL, or Apollo person ID from search_people results. "
-                "Personal emails and phone numbers require reveal flags (additional credits)."
+                "Personal emails require the reveal flag (additional credits)."
             ),
             "inputSchema": {
                 "type": "object",
@@ -192,11 +192,6 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                     "reveal_personal_emails": {
                         "type": "boolean",
                         "description": "Retrieve personal emails. May consume additional credits. Default: false",
-                        "default": False,
-                    },
-                    "reveal_phone_number": {
-                        "type": "boolean",
-                        "description": "Retrieve phone numbers. May consume additional credits. Default: false",
                         "default": False,
                     },
                 },
@@ -567,7 +562,6 @@ class ApolloTools:
         raw = self.client.enrich_people(
             details=details,
             reveal_personal_emails=args.get("reveal_personal_emails", False),
-            reveal_phone_number=args.get("reveal_phone_number", False),
         )
 
         matches = [_format_enriched_person(m) for m in raw.get("matches", []) if m]

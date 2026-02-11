@@ -121,14 +121,11 @@ class ApolloClient:
         """Search organizations via mixed_companies/search. DOES consume credits."""
         return self._post("/api/v1/mixed_companies/search", params)
 
-    def enrich_people(self, details: list, reveal_personal_emails: bool = False,
-                      reveal_phone_number: bool = False) -> Dict[str, Any]:
+    def enrich_people(self, details: list, reveal_personal_emails: bool = False) -> Dict[str, Any]:
         """Bulk enrich people via people/bulk_match. DOES consume credits."""
         payload: Dict[str, Any] = {"details": details}
         if reveal_personal_emails:
             payload["reveal_personal_emails"] = True
-        if reveal_phone_number:
-            payload["reveal_phone_number"] = True
         return self._post("/api/v1/people/bulk_match", payload)
 
     def enrich_organizations(self, details: list) -> Dict[str, Any]:
