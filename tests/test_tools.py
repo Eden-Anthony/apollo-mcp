@@ -212,7 +212,7 @@ def test_search_contacts_returns_crm_contacts(tools, client):
 
 def test_create_contacts_separates_new_and_existing(tools, client):
     client._post.return_value = {
-        "contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
+        "created_contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
         "existing_contacts": [{"id": "c2", "first_name": "Bob", "email": "bob@acme.com"}],
     }
 
@@ -325,7 +325,7 @@ def test_create_contacts_coerces_string_array(tools, client):
     import json
     contacts = [{"first_name": "Jane", "email": "jane@acme.com"}]
     client._post.return_value = {
-        "contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
+        "created_contacts": [{"id": "c1", "first_name": "Jane", "email": "jane@acme.com"}],
         "existing_contacts": [],
     }
 

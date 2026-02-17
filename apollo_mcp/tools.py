@@ -625,7 +625,7 @@ class ApolloTools:
 
         raw = self.client.create_contacts(contacts=contacts)
 
-        created = [self._format_contact_with_stage(c) for c in raw.get("contacts") or []]
+        created = [self._format_contact_with_stage(c) for c in raw.get("created_contacts") or []]
         existing = [self._format_contact_with_stage(c) for c in raw.get("existing_contacts") or []]
 
         return {
@@ -933,7 +933,7 @@ def _format_sequence(s: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _format_contact(c: Dict[str, Any]) -> Dict[str, Any]:
-    """Format a contact record from bulk_create response."""
+    """Format a contact record from bulk_create (created_contacts/existing_contacts)."""
     result = {
         "id": c.get("id"),
         "first_name": c.get("first_name"),
