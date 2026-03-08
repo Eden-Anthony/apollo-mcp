@@ -51,6 +51,9 @@ def test_all_tools_registered():
         "search_sequences",
         "list_email_accounts",
         "add_contacts_to_sequence",
+        "create_accounts",
+        "update_accounts",
+        "view_account",
     ]
 
 
@@ -483,6 +486,166 @@ def test_add_contacts_to_sequence_rejects_missing_sequence_id():
             "contact_ids": ["c1"],
             "email_account_id": "ea1",
         })
+
+
+# ---- create_accounts ----
+
+def test_create_accounts_deduplicates_by_domain(tools, client):
+    """Accounts with a matching domain in CRM are returned as existing, not created."""
+    def mock_post(path, payload):
+        if "accounts/search" in path:
+            domains = payload.get("q_organization_domains", [])
+            if "globex.com" in domains:
+                return {"accounts": [{"id": "a2", "name": "Globex", "domain": "globex.com"}]}
+            return {"accounts": []}
+        if "accounts/bulk_create" in path:
+            return {"newly_created_accounts": [{"id": "a1", "name": "Acme Corp", "domain": "acme.com"}]}
+        return {}
+
+    client._post = MagicMock(side_effect=mock_post)
+
+    result = tools.execute_tool("create_accounts", {
+        "accounts": [
+            {"name": "Acme Corp", "domain": "acme.com"},
+            {"name": "Globex", "domain": "globex.com"},
+        ]
+    })
+
+    assert result["created"] == 1
+    assert result["already_existed"] == 1
+    assert result["new_accounts"][0]["id"] == "a1"
+    assert result["existing_accounts"][0]["id"] == "a2"
+
+
+def test_create_accounts_deduplicates_by_name(tools, client):
+    """Accounts with a matching name (no domain) are returned as existing."""
+    def mock_post(path, payload):
+        if "accounts/search" in path:
+            if payload.get("q_organization_name"):
+                return {"accounts": [{"id": "a1", "name": "Acme Corp"}]}
+            return {"accounts": []}
+        return {}
+
+    client._post = MagicMock(side_effect=mock_post)
+
+    result = tools.execute_tool("create_accounts", {
+        "accounts": [{"name": "Acme Corp"}]
+    })
+
+    assert result["created"] == 0
+    assert result["already_existed"] == 1
+    assert result["existing_accounts"][0]["id"] == "a1"
+
+
+def test_create_accounts_name_match_is_exact(tools, client):
+    """Name search only dedupes on exact match, not partial."""
+    def mock_post(path, payload):
+        if "accounts/search" in path:
+            # Search returns a partial match — different name
+            if payload.get("q_organization_name"):
+                return {"accounts": [{"id": "a99", "name": "Acme Corp International"}]}
+            return {"accounts": []}
+        if "accounts/bulk_create" in path:
+            return {"newly_created_accounts": [{"id": "a1", "name": "Acme Corp"}]}
+        return {}
+
+    client._post = MagicMock(side_effect=mock_post)
+
+    result = tools.execute_tool("create_accounts", {
+        "accounts": [{"name": "Acme Corp"}]
+    })
+
+    # Should NOT match the partial name — creates a new account
+    assert result["created"] == 1
+    assert result["already_existed"] == 0
+
+
+def test_create_accounts_rejects_missing_name():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="missing a name"):
+        t.execute_tool("create_accounts", {"accounts": [{"domain": "acme.com"}]})
+
+
+def test_create_accounts_rejects_over_100():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="Maximum 100"):
+        t.execute_tool("create_accounts", {"accounts": [{"name": "x"}] * 101})
+
+
+# ---- update_accounts ----
+
+def test_update_accounts_passes_fields(tools, client):
+    client._post.return_value = {
+        "accounts": [{"id": "a1", "name": "Acme Inc", "domain": "acme.com"}],
+    }
+
+    result = tools.execute_tool("update_accounts", {
+        "account_ids": ["a1"],
+        "name": "Acme Inc",
+    })
+
+    assert result["updated"] == 1
+    payload = client._post.call_args[0][1]
+    assert payload["account_ids"] == ["a1"]
+    assert payload["name"] == "Acme Inc"
+
+
+def test_update_accounts_rejects_no_fields():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="at least one field"):
+        t.execute_tool("update_accounts", {"account_ids": ["a1"]})
+
+
+def test_update_accounts_coerces_string_array(tools, client):
+    """MCP clients sometimes pass JSON arrays as strings."""
+    client._post.return_value = {
+        "accounts": [{"id": "a1", "name": "Acme"}],
+    }
+
+    tools.execute_tool("update_accounts", {
+        "account_ids": '["a1", "a2"]',
+        "name": "Updated",
+    })
+
+    payload = client._post.call_args[0][1]
+    assert payload["account_ids"] == ["a1", "a2"]
+
+
+# ---- view_account ----
+
+def test_view_account_returns_formatted(tools, client):
+    client._get = MagicMock(return_value={
+        "account": {
+            "id": "a1",
+            "name": "Acme Corp",
+            "domain": "acme.com",
+            "phone": "555-1234",
+            "industry": "Technology",
+            "owner_id": "u1",
+            "city": "San Francisco",
+            "state": "California",
+            "country": "United States",
+            "annual_revenue": None,
+            "founded_year": None,
+        },
+    })
+
+    result = tools.execute_tool("view_account", {"account_id": "a1"})
+
+    account = result["account"]
+    assert account["id"] == "a1"
+    assert account["name"] == "Acme Corp"
+    assert account["domain"] == "acme.com"
+    assert account["city"] == "San Francisco"
+    # None values should be stripped
+    assert "annual_revenue" not in account
+    assert "founded_year" not in account
+
+
+def test_view_account_rejects_missing_id():
+    t = ApolloTools(ApolloClient())
+    with pytest.raises(ValueError, match="account_id is required"):
+        t.execute_tool("view_account", {"account_id": ""})
 
 
 def test_add_contacts_to_sequence_rejects_missing_email_account_id():

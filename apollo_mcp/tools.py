@@ -459,6 +459,93 @@ def get_tool_schemas() -> List[Dict[str, Any]]:
                 "required": ["sequence_id", "contact_ids", "email_account_id"],
             },
         },
+        # ---- accounts (companies added to your CRM) ----
+        # NOTE: "Accounts" in Apollo are companies explicitly added to your CRM.
+        # This is different from "organizations" which are companies in Apollo's
+        # global database (searched via search_organizations / enrich_organizations).
+        # An account is a CRM record you own, track, and manage.
+        {
+            "name": "create_accounts",
+            "description": (
+                "Add 1-100 companies to your Apollo CRM as accounts. "
+                "Accounts are companies explicitly added to your CRM — distinct from "
+                "organizations in Apollo's global database. "
+                "Existing matches are returned in existing_accounts without modification — "
+                "use update_accounts to modify those. "
+                "Returns account IDs needed for update_accounts and for linking contacts."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "accounts": {
+                        "type": "array",
+                        "description": "Array of 1-100 accounts (companies) to create.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "Company name (required)"},
+                                "domain": {"type": "string", "description": "Company domain, e.g. stripe.com"},
+                                "website_url": {"type": "string", "description": "Full website URL"},
+                                "phone": {"type": "string", "description": "Company phone number"},
+                                "industry": {"type": "string", "description": "Industry category"},
+                                "owner_id": {"type": "string", "description": "Apollo user ID for account owner"},
+                                "raw_address": {"type": "string", "description": "Full address as a single string"},
+                            },
+                            "required": ["name"],
+                        },
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                },
+                "required": ["accounts"],
+            },
+        },
+        {
+            "name": "update_accounts",
+            "description": (
+                "Update fields on 1-100 existing CRM accounts (companies). "
+                "Applies the same values to all specified accounts. "
+                "Requires account IDs from create_accounts or view_account results."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "account_ids": {
+                        "type": "array",
+                        "description": "Apollo account IDs to update (1-100).",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                        "maxItems": 100,
+                    },
+                    "name": {"type": "string", "description": "New company name"},
+                    "domain": {"type": "string", "description": "New company domain"},
+                    "website_url": {"type": "string", "description": "New website URL"},
+                    "phone": {"type": "string", "description": "New phone number"},
+                    "industry": {"type": "string", "description": "New industry category"},
+                    "owner_id": {"type": "string", "description": "New account owner (Apollo user ID)"},
+                    "raw_address": {"type": "string", "description": "New full address"},
+                },
+                "required": ["account_ids"],
+            },
+        },
+        {
+            "name": "view_account",
+            "description": (
+                "View full details of a single account (company) in your Apollo CRM. "
+                "Returns company info, owner, stage, address, and metadata. "
+                "Requires an account ID from create_accounts or search_contacts results."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "account_id": {
+                        "type": "string",
+                        "description": "Apollo account ID to retrieve.",
+                    },
+                },
+                "required": ["account_id"],
+            },
+        },
     ]
 
 
@@ -515,6 +602,12 @@ class ApolloTools:
             return self._list_email_accounts()
         elif name == "add_contacts_to_sequence":
             return self._add_contacts_to_sequence(arguments)
+        elif name == "create_accounts":
+            return self._create_accounts(arguments)
+        elif name == "update_accounts":
+            return self._update_accounts(arguments)
+        elif name == "view_account":
+            return self._view_account(arguments)
         else:
             raise ValueError(f"Unknown tool: {name}")
 
@@ -611,7 +704,7 @@ class ApolloTools:
 
     def _create_contacts(self, args: Dict[str, Any]) -> Dict[str, Any]:
         contacts = _coerce_list(args.get("contacts", []))
-
+        
         if len(contacts) > 100:
             raise ValueError("Maximum 100 contacts per request (API limit)")
         if len(contacts) == 0:
@@ -789,6 +882,110 @@ class ApolloTools:
             "organizations": matches,
         }
 
+    # ---- accounts (companies in your CRM) ----
+
+    def _create_accounts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        accounts = _coerce_list(args.get("accounts", []))
+
+        if len(accounts) > 100:
+            raise ValueError("Maximum 100 accounts per request (API limit)")
+        if len(accounts) == 0:
+            raise ValueError("At least 1 account required in accounts array")
+
+        for i, a in enumerate(accounts):
+            if not a.get("name"):
+                raise ValueError(
+                    f"Account at index {i} is missing a name. "
+                    "Each account requires at least a company name."
+                )
+
+        # Deduplicate: search for existing accounts by domain or name before creating.
+        # Apollo's bulk_create does NOT deduplicate, so we do it ourselves.
+        to_create = []
+        existing = []
+
+        for acct in accounts:
+            domain = (acct.get("domain") or "").strip()
+            name = (acct.get("name") or "").strip()
+
+            # Search by domain first (most reliable), fall back to name
+            match = None
+            if domain:
+                search_raw = self.client.search_accounts(
+                    {"q_organization_domains": [domain], "per_page": 1}
+                )
+                found = (search_raw.get("accounts") or [])
+                if found:
+                    match = found[0]
+
+            if not match and name:
+                search_raw = self.client.search_accounts(
+                    {"q_organization_name": name, "per_page": 1}
+                )
+                found = (search_raw.get("accounts") or [])
+                # Only match if the name is exact (case-insensitive)
+                if found and found[0].get("name", "").lower() == name.lower():
+                    match = found[0]
+
+            if match:
+                existing.append(match)
+            else:
+                to_create.append(acct)
+
+        # Bulk create only the accounts that don't already exist
+        created = []
+        if to_create:
+            raw = self.client.create_accounts(accounts=to_create)
+            created = (raw.get("newly_created_accounts")
+                       or raw.get("created_accounts")
+                       or [])
+            # Fallback: single-account creation returns {"account": {...}}
+            if not created and raw.get("account"):
+                created = [raw["account"]]
+
+        created = [_format_account(a) for a in created]
+        existing = [_format_account(a) for a in existing]
+
+        return {
+            "total_requested": len(accounts),
+            "created": len(created),
+            "already_existed": len(existing),
+            "new_accounts": created,
+            "existing_accounts": existing,
+        }
+
+    def _update_accounts(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        account_ids = _coerce_list(args.get("account_ids", []))
+
+        if len(account_ids) > 100:
+            raise ValueError("Maximum 100 accounts per request (API limit)")
+        if len(account_ids) == 0:
+            raise ValueError("At least 1 account_id required")
+
+        fields = {k: v for k, v in args.items()
+                  if k != "account_ids" and v is not None}
+        if not fields:
+            raise ValueError("Provide at least one field to update")
+
+        raw = self.client.update_accounts(account_ids, **fields)
+
+        updated = [_format_account(a) for a in raw.get("accounts") or []]
+
+        return {
+            "total_requested": len(account_ids),
+            "updated": len(updated),
+            "accounts": updated,
+        }
+
+    def _view_account(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        account_id = (args.get("account_id") or "").strip()
+        if not account_id:
+            raise ValueError("account_id is required")
+
+        raw = self.client.view_account(account_id)
+        account = raw.get("account") or raw
+        return {"account": _format_account(account)}
+
 
 # ---- helpers ----
 
@@ -917,6 +1114,34 @@ def _format_enriched_organization(o: Dict[str, Any]) -> Dict[str, Any]:
     result = _format_organization(o)
     result["phone"] = o.get("phone")
     result["website_url"] = o.get("website_url")
+    return {k: v for k, v in result.items() if v is not None}
+
+
+def _format_account(a: Dict[str, Any]) -> Dict[str, Any]:
+    """Format an Apollo account (CRM company) record to a scannable dict.
+
+    Accounts are companies explicitly added to your CRM — distinct from
+    organizations in Apollo's global database.
+    """
+    result = {
+        "id": a.get("id"),
+        "name": a.get("name"),
+        "domain": a.get("domain"),
+        "website_url": a.get("website_url"),
+        "phone": a.get("phone"),
+        "industry": a.get("industry"),
+        "estimated_num_employees": a.get("estimated_num_employees"),
+        "annual_revenue": a.get("annual_revenue"),
+        "founded_year": a.get("founded_year"),
+        "linkedin_url": a.get("linkedin_url"),
+        "owner_id": a.get("owner_id"),
+        "account_stage_id": a.get("account_stage_id"),
+        "raw_address": a.get("raw_address"),
+        "city": a.get("city"),
+        "state": a.get("state"),
+        "country": a.get("country"),
+        "created_at": a.get("created_at"),
+    }
     return {k: v for k, v in result.items() if v is not None}
 
 

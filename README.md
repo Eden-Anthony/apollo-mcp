@@ -117,7 +117,7 @@ Parameters (all optional):
 
 Add 1-100 people to your CRM. Duplicates are returned separately in `existing_contacts`.
 
-- `contacts` (required) — array of objects with: `first_name`, `last_name`, `email`, `phone_number`, `title`, `organization_name`, `account_id`, `owner_id`, `contact_stage_id`
+- `contacts` (required) — array of objects with: `first_name`, `last_name`, `email`, `phone_number`, `title`, `organization_name`, `account_id`, `owner_id`, `contact_stage_id`, `run_dedupe=True`
 
 #### `update_contacts`
 
@@ -132,6 +132,29 @@ Move 1-100 contacts to a new pipeline stage. Preferred over `update_contacts` wh
 
 - `contact_ids` (required) — array of contact IDs
 - `contact_stage` (required) — stage name (e.g. "Interested") or stage ID
+
+### Account Management
+
+Accounts are companies explicitly added to your Apollo CRM — distinct from organizations in Apollo's global database (searched via `search_organizations` / `enrich_organizations`). An account is a CRM record you own, track, and manage.
+
+#### `create_accounts`
+
+Add 1-100 companies to your CRM as accounts. Existing matches are returned separately without modification.
+
+- `accounts` (required) — array of objects with: `name` (required), `domain`, `website_url`, `phone`, `industry`, `owner_id`, `raw_address`
+
+#### `update_accounts`
+
+Update fields on 1-100 existing CRM accounts. Applies the same values to all specified accounts.
+
+- `account_ids` (required) — array of account IDs
+- `name`, `domain`, `website_url`, `phone`, `industry`, `owner_id`, `raw_address` — fields to update
+
+#### `view_account`
+
+View full details of a single account in your CRM.
+
+- `account_id` (required) — Apollo account ID
 
 ### Sequences
 

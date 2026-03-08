@@ -153,6 +153,24 @@ class ApolloClient:
             "contact_stage_id": contact_stage_id,
         })
 
+    def create_accounts(self, accounts: list) -> Dict[str, Any]:
+        """Bulk create accounts (companies) via accounts/bulk_create. Does NOT update existing."""
+        return self._post("/api/v1/accounts/bulk_create", {"accounts": accounts})
+
+    def search_accounts(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Search CRM accounts via accounts/search."""
+        return self._post("/api/v1/accounts/search", params)
+
+    def update_accounts(self, account_ids: list, **fields) -> Dict[str, Any]:
+        """Bulk update accounts (companies) via accounts/bulk_update."""
+        payload: Dict[str, Any] = {"account_ids": account_ids}
+        payload.update(fields)
+        return self._post("/api/v1/accounts/bulk_update", payload)
+
+    def view_account(self, account_id: str) -> Dict[str, Any]:
+        """View a single account (company) by ID."""
+        return self._get(f"/api/v1/accounts/{account_id}")
+
     def search_sequences(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Search sequences via emailer_campaigns/search."""
         return self._post("/api/v1/emailer_campaigns/search", params)
